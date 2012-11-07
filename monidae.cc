@@ -22,20 +22,20 @@ using namespace std;
 
 const int kMaxLine = 2048;
 
-const char logFileName[]="/home/javier/Dropbox/Damic/tools/monitorDaemon/log.txt";
-const char lockFile[]="/home/javier/Dropbox/Damic/tools/monitorDaemon/lock";
+// const char logFileName[]="/home/javier/Dropbox/Damic/tools/monitorDaemon/log.txt";
+// const char lockFile[]="/home/javier/Dropbox/Damic/tools/monitorDaemon/lock";
 
-// const char logFileName[]="/damicData/javier/monitorDaemon/log.txt";
-// const char lockFile[]="/damicData/javier/monitorDaemon/lock";
+const char logFileName[]="/damicData/javier/monitorDaemon/log.txt";
+const char lockFile[]="/damicData/javier/monitorDaemon/lock";
 
-//const char inetAddr[] = "127.0.0.1";
-const char inetAddr[] = "131.225.90.254"; //whirl
+const char inetAddr[] = "127.0.0.1";
+//const char inetAddr[] = "131.225.90.254"; //whirl
 //const char inetAddr[] = "131.225.90.5"; //cyclone
 const int portTemp = 2055;
 const int portPres = 2050;
 const int portPan  = 5355;
 const long kMinTimeCryoChange = 600; //10 minutes
-const long kLogTimeInterval = 5; //in seconds
+const long kLogTimeInterval = 30; //in seconds
 
 // time_t lastCryoChange(0);
 bool gCryoStatus;
@@ -192,6 +192,7 @@ void updateExpoStats(){
 
   if( !(gSystemStatus.readingImage) ){
     for(unsigned int p=0;p<gSystemStatus.vTelComm.size();++p){
+      if(gSystemStatus.vTel[p] == -2000) continue;
       if(gSystemStatus.vTelExpoMax[p] < gSystemStatus.vTel[p])
         gSystemStatus.vTelExpoMax[p] = gSystemStatus.vTel[p];
       if(gSystemStatus.vTelExpoMin[p] > gSystemStatus.vTel[p])
@@ -535,7 +536,11 @@ int main(void) {
           
   /* Open any logs here */
   ofstream logFile(logFileName);
-  logFile << "#Time\tTemp\tPressure\n";
+  logFile << "#Time\tTemp\tPressure\t";
+  for(unsigned int p=0;p<gSystemStatus.vTelName.size();++p)
+     logFile << gSystemStatus.vTelName[p] << "\t";
+  logFile << "cryoStatus\treadingImage\texposingImage";
+  logFile << endl;
   
   /* The Big Loop */
   int i=0;
@@ -560,7 +565,9 @@ int main(void) {
     logFile << time (NULL) << " " << gSystemStatus.temp << "\t" << gSystemStatus.pres;
     for(unsigned int p=0;p<gSystemStatus.vTelComm.size();++p)
       logFile << "\t" << gSystemStatus.vTel[p];
-    logFile << "\t" << gSystemStatus.cryoStatus << endl;
+    logFile << "\t" << gSystemStatus.cryoStatus; 
+    logFile << "\t" << gSystemStatus.readingImage;
+    logFile << "\t" << gSystemStatus.exposingImage << endl;
 
     if(gSystemStatus.exposingImage)
       updateExpoStats();
