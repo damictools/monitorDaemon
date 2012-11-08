@@ -22,23 +22,18 @@ using namespace std;
 
 const int kMaxLine = 2048;
 
-// const char logFileName[]="/home/javier/Dropbox/Damic/tools/monitorDaemon/log.txt";
-// const char lockFile[]="/home/javier/Dropbox/Damic/tools/monitorDaemon/lock";
 
-const char logFileName[]="/damicData/javier/monitorDaemon/log.txt";
-const char lockFile[]="/damicData/javier/monitorDaemon/lock";
-
-const char inetAddr[] = "127.0.0.1";
-//const char inetAddr[] = "131.225.90.254"; //whirl
+// const char inetAddr[] = "127.0.0.1";
+const char inetAddr[] = "131.225.90.254"; //whirl
 //const char inetAddr[] = "131.225.90.5"; //cyclone
 const int portTemp = 2055;
 const int portPres = 2050;
 const int portPan  = 5355;
 const long kMinTimeCryoChange = 600; //10 minutes
-const long kLogTimeInterval = 30; //in seconds
+const long kLogTimeInterval = 3; //in seconds
 
 // time_t lastCryoChange(0);
-bool gCryoStatus;
+// bool gCryoStatus;
 
 struct systemStatus_t{
   
@@ -149,7 +144,7 @@ void turnCryoOnOff(bool cryoON,string &responseCryo){
   
   if(dif>kMinTimeCryoChange){
     time( &(gSystemStatus.lastCryoChange) );
-    gCryoStatus = cryoON;
+    gSystemStatus.cryoStatus = cryoON;
     const string msjCryo = cryoON ? "on":"off";
     int comCode = talkToSocket(inetAddr, portTemp, msjCryo, responseCryo);
     responseCryo+="\n";
@@ -498,20 +493,31 @@ int initServer(){
 
 int main(void) {
   
-  int pid_file = open(lockFile, O_CREAT | O_RDWR, 0666);
+  readConfFile("monidae.conf");
+  
+  const string logFileName = gSystemStatus.logDir+"/log.txt";
+  const string lockFile    = gSystemStatus.logDir+"/lock";
+
+  cout << lockFile << endl;
+  
+  int pid_file = open(lockFile.c_str(), O_CREAT | O_RDWR, 0666);
   int rc = flock(pid_file, LOCK_EX | LOCK_NB);
-  if(rc) {
-  if(EWOULDBLOCK == errno)
-    cout << "\nCould not create lock file!\n";
-    cout << "Is there another instance of the DAMIC daemon running?\n";
-    cout << "Kill it before starting a new one.\n";
-    cout << "No new instances will be launched.\n\n";
-    return 1; // another instance is running
+  if(rc!=0) {
+    if(EWOULDBLOCK == errno){  // another instance is running
+      cout << "\nThe lock file is locked!\n";
+      cout << "Is there another instance of the DAMIC daemon running?\n";
+      cout << "Kill it before starting a new one.\n";
+      cout << "No new instances will be launched.\n\n";
+    }
+    else{
+      cout << "\nCould not create lock file!\n";
+      cout << "Check the logging directory in the config file\n\n";
+    }
+    return 1; 
   }
   
-  readConfFile("monidae.conf");
 
-  cout << endl << "Logging dir: " << gSystemStatus.logDir << endl << endl;
+  cout << endl << "Logging dir: " << gSystemStatus.logDir << endl << endl; 
   for(unsigned int i=0;i<gSystemStatus.vTelName.size();++i){
     cout << gSystemStatus.vTelName[i] << "\t" << gSystemStatus.vTelComm[i] << endl;
   }
@@ -529,13 +535,13 @@ int main(void) {
   
   /* Global variables initialization */
   time( &(gSystemStatus.lastCryoChange) );
-  gCryoStatus=1;
+  gSystemStatus.cryoStatus=1;
 
   /* Change the file mode mask */
   umask(0);
           
   /* Open any logs here */
-  ofstream logFile(logFileName);
+  ofstream logFile(logFileName.c_str());
   logFile << "#Time\tTemp\tPressure\t";
   for(unsigned int p=0;p<gSystemStatus.vTelName.size();++p)
      logFile << gSystemStatus.vTelName[p] << "\t";
