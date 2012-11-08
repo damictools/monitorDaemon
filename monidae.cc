@@ -20,17 +20,21 @@
 
 using namespace std;
 
-const int kMaxLine = 2048;
+const int kMaxLine   = 2048;
+const int kErrorCode =-1000;
+const int kNANCode   =-1001;
+const int kEmptyCode =-1002;
+const int kNotReadingCode =-2001;
+const int kCommErrorMask  = 10000;
 
-
-const char inetAddr[] = "127.0.0.1";
-//const char inetAddr[] = "131.225.90.254"; //whirl
+//const char inetAddr[] = "127.0.0.1";
+const char inetAddr[] = "131.225.90.254"; //whirl
 //const char inetAddr[] = "131.225.90.5"; //cyclone
 const int portTemp = 2055;
 const int portPres = 2050;
 const int portPan  = 5355;
 const long kMinTimeCryoChange = 600; //10 minutes
-const long kLogTimeInterval = 30; //in seconds
+const long kLogTimeInterval = 5; //in seconds
 
 // time_t lastCryoChange(0);
 // bool gCryoStatus;
@@ -44,6 +48,7 @@ struct systemStatus_t{
   
   int cryoStatus;
   time_t lastCryoChange;
+  int relay;
   
   time_t expoStart;
   time_t expoStop;
@@ -51,6 +56,11 @@ struct systemStatus_t{
   float temp;
   float tempExpoMax;
   float tempExpoMin;
+  
+  float htr;
+  float htrExpoMax;
+  float htrExpoMin;
+  
   
   float pres;
   float presExpoMax;
@@ -64,10 +74,11 @@ struct systemStatus_t{
   
   systemStatus_t(): logDir(""),
                     readingImage(false),exposingImage(false),
-                    cryoStatus(-1),lastCryoChange(-1),
-                    expoStart(-1),expoStop(-1),
-                    temp(-1),tempExpoMax(-1),tempExpoMin(-1),
-                    pres(-1),presExpoMax(-1),presExpoMin(-1),
+                    cryoStatus(kEmptyCode),lastCryoChange(kEmptyCode),relay(kEmptyCode),
+                    expoStart(kEmptyCode),expoStop(kEmptyCode),
+                    temp(kEmptyCode),tempExpoMax(kEmptyCode),tempExpoMin(kEmptyCode),
+                    htr(kEmptyCode),htrExpoMax(kEmptyCode),htrExpoMin(kEmptyCode),
+                    pres(kEmptyCode),presExpoMax(kEmptyCode),presExpoMin(kEmptyCode),
                     vTel(0),vTelName(0),vTelComm(0),vTelExpoMax(0),vTelExpoMin(0){;};
 };
 
@@ -137,64 +148,43 @@ int talkToSocket(const char* inetAddr, const int port, const string &msj, string
 }
 
 
-void getLogData(){
-  /* get temperature */
-  {
-    const string msjTemp("rtd");
-    string responseTemp("");
-    int comCode = talkToSocket(inetAddr, portTemp, msjTemp, responseTemp);
-    if ( comCode < 0){
-      ostringstream oss;
-      oss << comCode;
-      responseTemp = oss.str();
-    }
-    istringstream tempISS(responseTemp);
-    float tempAux = -1;
-    tempISS >> tempAux;
-    if (tempISS.fail()) gSystemStatus.temp = -1;  // not a number
-    else gSystemStatus.temp = tempAux; 
-  }
+float getSensorData(const char* msj, const int sPort){
   
-  /* get presure */
-  {
-    const string msjPres("prs");
-    string responsePres("");
-    int comCode = talkToSocket(inetAddr, portPres, msjPres, responsePres);
-    if ( comCode < 0){
-      ostringstream oss;
-      oss << comCode;
-      responsePres = oss.str();
-    }
-    istringstream presISS(responsePres);
-    float presAux = -1;
-    presISS >> presAux;
-    if (presISS.fail()) gSystemStatus.pres = -1;  // not a number
-    else gSystemStatus.pres = presAux; 
+  string responseString("");
+  int comCode = talkToSocket(inetAddr, sPort, msj, responseString);
+  if ( comCode < 0){
+    ostringstream oss;
+    oss << comCode*kCommErrorMask;
+    responseString = oss.str();
   }
+  istringstream responseISS(responseString);
+  
+  float responseVal = kEmptyCode;
+  responseISS >> responseVal;
+  if (responseISS.fail()) return  kNANCode;  // not a number
+  return responseVal; 
+  
+}
+
+
+void getLogData(){
+  
+  gSystemStatus.temp  = getSensorData("rtd", portTemp); /* get temperature */
+  gSystemStatus.relay = getSensorData("rly", portTemp); /* get cryocooler relay status */
+  gSystemStatus.htr   = getSensorData("htr", portTemp); /* get cryocooler relay status */
+  
+  gSystemStatus.pres  = getSensorData("prs", portPres); /* get pressure */
   
   /* get all the pan variables */
-  
-  {
-    for(unsigned int p=0;p<gSystemStatus.vTelComm.size();++p){
-      string responsePan("");
-      if( gSystemStatus.readingImage == false ){
-        const string msjPan = "get " + gSystemStatus.vTelComm[p];
-        int comCode = talkToSocket(inetAddr, portPan, msjPan, responsePan);
-        if ( comCode < 0){
-          ostringstream oss;
-          oss << comCode;
-          responsePan = oss.str();
-        }
-      }
-      else responsePan = "-2001";
-      
-      istringstream panISS(responsePan);
-      float panAux = -1;
-      panISS >> panAux;
-      if (panISS.fail()) gSystemStatus.vTel[p] = -5000;  // not a number
-      else gSystemStatus.vTel[p] = panAux;
+  for(unsigned int p=0;p<gSystemStatus.vTelComm.size();++p){
+    if( gSystemStatus.readingImage == false ){
+      const string msjPan = "get " + gSystemStatus.vTelComm[p];
+      gSystemStatus.vTel[p] = getSensorData(msjPan.c_str(), portPan);
     }
+    else
+     gSystemStatus.vTel[p] = kNotReadingCode; 
   }
+  
 }
 
 void turnCryoOnOff(bool cryoON,string &responseCryo){
@@ -222,12 +212,34 @@ void turnCryoOnOff(bool cryoON,string &responseCryo){
   }
 }
 
+void turnHtrOnOff(bool htrON,string &responseHtr){
+  
+  responseHtr="";
+  const string msjHtr = htrON ? "ht1":"ht0";
+  int comCode = talkToSocket(inetAddr, portTemp, msjHtr, responseHtr);
+  
+  if ( comCode < 0){
+    ostringstream oss;
+    oss << comCode << endl;
+    responseHtr = oss.str();
+  }
+  else{
+    responseHtr= htrON ? "Heater ON\n":"Heater OFF\n";
+  }
+  
+  gSystemStatus.htr   = getSensorData("htr", portTemp); /* get cryocooler relay status */
+  
+}
+
+
 void initExpoStats(){
  
   getLogData(); 
 
   gSystemStatus.tempExpoMax = gSystemStatus.temp;
   gSystemStatus.tempExpoMin = gSystemStatus.temp;
+  gSystemStatus.htrExpoMax = gSystemStatus.htr;
+  gSystemStatus.htrExpoMin = gSystemStatus.htr;
   gSystemStatus.presExpoMax = gSystemStatus.pres;
   gSystemStatus.presExpoMin = gSystemStatus.pres;
   for(unsigned int i=0;i<gSystemStatus.vTel.size();++i){
@@ -238,24 +250,37 @@ void initExpoStats(){
 }
 
 void updateExpoStats(){
-  if(gSystemStatus.tempExpoMax < gSystemStatus.temp)
-    gSystemStatus.tempExpoMax = gSystemStatus.temp;
-  if(gSystemStatus.tempExpoMin > gSystemStatus.temp)
-    gSystemStatus.tempExpoMin = gSystemStatus.temp;
+  
+  if(gSystemStatus.temp > -1000){
+    if(gSystemStatus.tempExpoMax < gSystemStatus.temp)
+      gSystemStatus.tempExpoMax = gSystemStatus.temp;
+    if(gSystemStatus.tempExpoMin > gSystemStatus.temp || gSystemStatus.tempExpoMin < kErrorCode)
+      gSystemStatus.tempExpoMin = gSystemStatus.temp;
+  }
 
-  if(gSystemStatus.presExpoMax < gSystemStatus.pres)
-    gSystemStatus.presExpoMax = gSystemStatus.pres;
-  if(gSystemStatus.presExpoMin > gSystemStatus.pres)
-    gSystemStatus.presExpoMin = gSystemStatus.pres;
-
+  if(gSystemStatus.pres > -1000){
+    if(gSystemStatus.presExpoMax < gSystemStatus.pres)
+      gSystemStatus.presExpoMax = gSystemStatus.pres;
+    if(gSystemStatus.presExpoMin > gSystemStatus.pres || gSystemStatus.presExpoMin < kErrorCode)
+      gSystemStatus.presExpoMin = gSystemStatus.pres;
+  }
+  
   if( gSystemStatus.readingImage == false ){
+    
+    if(gSystemStatus.htr > -1000){
+      if(gSystemStatus.htrExpoMax < gSystemStatus.htr)
+        gSystemStatus.htrExpoMax = gSystemStatus.htr;
+      if(gSystemStatus.htrExpoMin > gSystemStatus.htr || gSystemStatus.htrExpoMin < kErrorCode)
+        gSystemStatus.htrExpoMin = gSystemStatus.htr;
+    }
+    
     for(unsigned int p=0;p<gSystemStatus.vTelComm.size();++p){
 
       if(gSystemStatus.vTel[p] < -1000) continue;
 
       if(gSystemStatus.vTelExpoMax[p] < gSystemStatus.vTel[p])
         gSystemStatus.vTelExpoMax[p] = gSystemStatus.vTel[p];
-      if(gSystemStatus.vTelExpoMin[p] > gSystemStatus.vTel[p])
+      if(gSystemStatus.vTelExpoMin[p] > gSystemStatus.vTel[p] || gSystemStatus.vTelExpoMin[p] < kErrorCode)
         gSystemStatus.vTelExpoMin[p] = gSystemStatus.vTel[p];
 
     }
@@ -293,6 +318,16 @@ int listenForCommands(int &listenfd)
   else if(strncmp (recvBuff, "cryoOFF", 7) == 0){
     string response;
     turnCryoOnOff(false,response);
+    write(client_sock , response.c_str() , response.size());
+  }
+  else if(strncmp (recvBuff, "htrON", 5) == 0){
+    string response;
+    turnHtrOnOff(true,response);
+    write(client_sock , response.c_str() , response.size());
+  }
+  else if(strncmp (recvBuff, "htrOFF", 6) == 0){
+    string response;
+    turnHtrOnOff(false,response);
     write(client_sock , response.c_str() , response.size());
   }
   
@@ -349,6 +384,9 @@ int listenForCommands(int &listenfd)
     statOSS << "TEMPMAX " << gSystemStatus.tempExpoMax << endl;
     statOSS << "TEMPMIN " << gSystemStatus.tempExpoMin << endl;
     
+    statOSS << "HTRMAX  " << gSystemStatus.htrExpoMax << endl;
+    statOSS << "HTRMIN  " << gSystemStatus.htrExpoMin << endl;
+    
     statOSS << "PRESMAX " << gSystemStatus.presExpoMax << endl;
     statOSS << "PRESMIN " << gSystemStatus.presExpoMin << endl;
     
@@ -359,6 +397,51 @@ int listenForCommands(int &listenfd)
     
     write(client_sock , statOSS.str().c_str() , statOSS.str().size());
   }
+  
+  else if(strncmp (recvBuff, "printCurrentStatus", 18) == 0){
+    
+    ostringstream statOSS; 
+    
+    if(gSystemStatus.exposingImage){
+      statOSS << "EXPOSING \n";
+      time_t currentTime;
+      time( &currentTime);
+      double dif = difftime(currentTime,gSystemStatus.expoStart);
+      statOSS << "EXPTIME " <<  dif  << endl << endl;
+    }
+    else{
+      time_t currentTime;
+      time( &currentTime);
+      double dif = difftime(currentTime,gSystemStatus.expoStop);
+      statOSS << "LAST EXPOSURE ENDED " << dif << " SECONDS AGO\n";
+    }
+    
+    statOSS << "CRYO " << (gSystemStatus.cryoStatus ? "ON":"OFF") << endl;
+    statOSS << "RLY  " << (gSystemStatus.relay ? "ON":"OFF") << endl;
+    
+    statOSS << "TEMP " << gSystemStatus.temp << endl;
+    statOSS << "HTR  " << gSystemStatus.htr << endl;
+    statOSS << "PRES " << gSystemStatus.pres << endl;
+    
+    for(unsigned int p=0;p<gSystemStatus.vTelName.size();++p){
+      statOSS << gSystemStatus.vTelName[p] << " " << gSystemStatus.vTel[p] << endl;
+    }
+    
+    write(client_sock , statOSS.str().c_str() , statOSS.str().size());
+  }
+  
+  
+    
+  else if(strncmp (recvBuff, "help", 4) == 0){
+    
+    ostringstream statOSS; 
+    statOSS << "Available commands:\n";
+    statOSS << "stop, stat, cryoON, cryoOFF, htrON, htrOFF, printLastExpoStats, printCurrentStatus, expoStarted, expoEnded, readStarted, readEnded\n";
+    
+    write(client_sock , statOSS.str().c_str() , statOSS.str().size());
+  }
+  
+  
   
   close(client_sock);
   usleep(10000);
@@ -437,9 +520,9 @@ bool readConfFile(const string &confFile){
     gSystemStatus.vTelComm.push_back(varComm);
   }
   const unsigned int nVars = gSystemStatus.vTelName.size();
-  gSystemStatus.vTel.resize(nVars,-1000);
-  gSystemStatus.vTelExpoMax.resize(nVars,-1000);
-  gSystemStatus.vTelExpoMin.resize(nVars,-1000);
+  gSystemStatus.vTel.resize(nVars,kEmptyCode);
+  gSystemStatus.vTelExpoMax.resize(nVars,kEmptyCode);
+  gSystemStatus.vTelExpoMin.resize(nVars,kEmptyCode);
   return true;
 }
 
@@ -540,7 +623,8 @@ int main(void) {
   
   /* Global variables initialization */
   time( &(gSystemStatus.lastCryoChange) );
-  gSystemStatus.cryoStatus=1;
+  gSystemStatus.relay = getSensorData("rly", portTemp); /* get cryocooler relay status */
+  gSystemStatus.cryoStatus = gSystemStatus.relay;
 
   /* Change the file mode mask */
   umask(0);
@@ -550,6 +634,7 @@ int main(void) {
   logFile << "#Time\tTemp\tPressure\t";
   for(unsigned int p=0;p<gSystemStatus.vTelName.size();++p)
      logFile << gSystemStatus.vTelName[p] << "\t";
+  logFile << "htr\trelay";
   logFile << "cryoStatus\treadingImage\texposingImage";
   logFile << endl;
   
@@ -576,6 +661,8 @@ int main(void) {
     logFile << time (NULL) << " " << gSystemStatus.temp << "\t" << gSystemStatus.pres;
     for(unsigned int p=0;p<gSystemStatus.vTelComm.size();++p)
       logFile << "\t" << gSystemStatus.vTel[p];
+    logFile << "\t" << gSystemStatus.htr;
+    logFile << "\t" << gSystemStatus.relay;
     logFile << "\t" << gSystemStatus.cryoStatus; 
     logFile << "\t" << gSystemStatus.readingImage;
     logFile << "\t" << gSystemStatus.exposingImage << endl;
