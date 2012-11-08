@@ -23,14 +23,14 @@ using namespace std;
 const int kMaxLine = 2048;
 
 
-// const char inetAddr[] = "127.0.0.1";
-const char inetAddr[] = "131.225.90.254"; //whirl
+const char inetAddr[] = "127.0.0.1";
+//const char inetAddr[] = "131.225.90.254"; //whirl
 //const char inetAddr[] = "131.225.90.5"; //cyclone
 const int portTemp = 2055;
 const int portPres = 2050;
 const int portPan  = 5355;
 const long kMinTimeCryoChange = 600; //10 minutes
-const long kLogTimeInterval = 3; //in seconds
+const long kLogTimeInterval = 30; //in seconds
 
 // time_t lastCryoChange(0);
 // bool gCryoStatus;
@@ -136,6 +136,67 @@ int talkToSocket(const char* inetAddr, const int port, const string &msj, string
   return 0;
 }
 
+
+void getLogData(){
+  /* get temperature */
+  {
+    const string msjTemp("rtd");
+    string responseTemp("");
+    int comCode = talkToSocket(inetAddr, portTemp, msjTemp, responseTemp);
+    if ( comCode < 0){
+      ostringstream oss;
+      oss << comCode;
+      responseTemp = oss.str();
+    }
+    istringstream tempISS(responseTemp);
+    float tempAux = -1;
+    tempISS >> tempAux;
+    if (tempISS.fail()) gSystemStatus.temp = -1;  // not a number
+    else gSystemStatus.temp = tempAux; 
+  }
+  
+  /* get presure */
+  {
+    const string msjPres("prs");
+    string responsePres("");
+    int comCode = talkToSocket(inetAddr, portPres, msjPres, responsePres);
+    if ( comCode < 0){
+      ostringstream oss;
+      oss << comCode;
+      responsePres = oss.str();
+    }
+    istringstream presISS(responsePres);
+    float presAux = -1;
+    presISS >> presAux;
+    if (presISS.fail()) gSystemStatus.pres = -1;  // not a number
+    else gSystemStatus.pres = presAux; 
+  }
+  
+  /* get all the pan variables */
+  
+  {
+    for(unsigned int p=0;p<gSystemStatus.vTelComm.size();++p){
+      string responsePan("");
+      if( gSystemStatus.readingImage == false ){
+        const string msjPan = "get " + gSystemStatus.vTelComm[p];
+        int comCode = talkToSocket(inetAddr, portPan, msjPan, responsePan);
+        if ( comCode < 0){
+          ostringstream oss;
+          oss << comCode;
+          responsePan = oss.str();
+        }
+      }
+      else responsePan = "-2001";
+      
+      istringstream panISS(responsePan);
+      float panAux = -1;
+      panISS >> panAux;
+      if (panISS.fail()) gSystemStatus.vTel[p] = -5000;  // not a number
+      else gSystemStatus.vTel[p] = panAux;
+    }
+  }
+}
+
 void turnCryoOnOff(bool cryoON,string &responseCryo){
   responseCryo="";
   time_t currentTime;
@@ -162,7 +223,9 @@ void turnCryoOnOff(bool cryoON,string &responseCryo){
 }
 
 void initExpoStats(){
-  
+ 
+  getLogData(); 
+
   gSystemStatus.tempExpoMax = gSystemStatus.temp;
   gSystemStatus.tempExpoMin = gSystemStatus.temp;
   gSystemStatus.presExpoMax = gSystemStatus.pres;
@@ -187,11 +250,14 @@ void updateExpoStats(){
 
   if( gSystemStatus.readingImage == false ){
     for(unsigned int p=0;p<gSystemStatus.vTelComm.size();++p){
+
       if(gSystemStatus.vTel[p] < -1000) continue;
+
       if(gSystemStatus.vTelExpoMax[p] < gSystemStatus.vTel[p])
         gSystemStatus.vTelExpoMax[p] = gSystemStatus.vTel[p];
       if(gSystemStatus.vTelExpoMin[p] > gSystemStatus.vTel[p])
         gSystemStatus.vTelExpoMin[p] = gSystemStatus.vTel[p];
+
     }
   }
 }
@@ -375,67 +441,6 @@ bool readConfFile(const string &confFile){
   gSystemStatus.vTelExpoMax.resize(nVars,-1000);
   gSystemStatus.vTelExpoMin.resize(nVars,-1000);
   return true;
-}
-
-
-void getLogData(){
-  /* get temperature */
-  {
-    const string msjTemp("rtd");
-    string responseTemp("");
-    int comCode = talkToSocket(inetAddr, portTemp, msjTemp, responseTemp);
-    if ( comCode < 0){
-      ostringstream oss;
-      oss << comCode;
-      responseTemp = oss.str();
-    }
-    istringstream tempISS(responseTemp);
-    float tempAux = -1;
-    tempISS >> tempAux;
-    if (tempISS.fail()) gSystemStatus.temp = -1;  // not a number
-    else gSystemStatus.temp = tempAux; 
-  }
-  
-  /* get presure */
-  {
-    const string msjPres("prs");
-    string responsePres("");
-    int comCode = talkToSocket(inetAddr, portPres, msjPres, responsePres);
-    if ( comCode < 0){
-      ostringstream oss;
-      oss << comCode;
-      responsePres = oss.str();
-    }
-    istringstream presISS(responsePres);
-    float presAux = -1;
-    presISS >> presAux;
-    if (presISS.fail()) gSystemStatus.pres = -1;  // not a number
-    else gSystemStatus.pres = presAux; 
-  }
-  
-  /* get all the pan variables */
-  
-  {
-    for(unsigned int p=0;p<gSystemStatus.vTelComm.size();++p){
-      string responsePan("");
-      if( !(gSystemStatus.readingImage) ){
-        const string msjPan = "get " + gSystemStatus.vTelComm[p];
-        int comCode = talkToSocket(inetAddr, portPan, msjPan, responsePan);
-        if ( comCode < 0){
-          ostringstream oss;
-          oss << comCode;
-          responsePan = oss.str();
-        }
-      }
-      else responsePan = "-2000";
-      
-      istringstream panISS(responsePan);
-      float panAux = -1;
-      panISS >> panAux;
-      if (panISS.fail()) gSystemStatus.vTel[p] = -5000;  // not a number
-      else gSystemStatus.vTel[p] = panAux;
-    }
-  }
 }
 
 
