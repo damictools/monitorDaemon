@@ -185,9 +185,9 @@ void updateExpoStats(){
   if(gSystemStatus.presExpoMin > gSystemStatus.pres)
     gSystemStatus.presExpoMin = gSystemStatus.pres;
 
-  if( !(gSystemStatus.readingImage) ){
+  if( gSystemStatus.readingImage == false ){
     for(unsigned int p=0;p<gSystemStatus.vTelComm.size();++p){
-      if(gSystemStatus.vTel[p] == -2000) continue;
+      if(gSystemStatus.vTel[p] < -1000) continue;
       if(gSystemStatus.vTelExpoMax[p] < gSystemStatus.vTel[p])
         gSystemStatus.vTelExpoMax[p] = gSystemStatus.vTel[p];
       if(gSystemStatus.vTelExpoMin[p] > gSystemStatus.vTel[p])
@@ -432,7 +432,7 @@ void getLogData(){
       istringstream panISS(responsePan);
       float panAux = -1;
       panISS >> panAux;
-      if (panISS.fail()) gSystemStatus.vTel[p] = -1000;  // not a number
+      if (panISS.fail()) gSystemStatus.vTel[p] = -5000;  // not a number
       else gSystemStatus.vTel[p] = panAux;
     }
   }
