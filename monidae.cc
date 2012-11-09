@@ -27,14 +27,14 @@ const int kEmptyCode =-1002;
 const int kNotReadingCode =-2001;
 const int kCommErrorMask  = 10000;
 
-//const char inetAddr[] = "127.0.0.1";
-const char inetAddr[] = "131.225.90.254"; //whirl
+const char inetAddr[] = "127.0.0.1";
+//const char inetAddr[] = "131.225.90.254"; //whirl
 //const char inetAddr[] = "131.225.90.5"; //cyclone
 const int portTemp = 2055;
 const int portPres = 2050;
 const int portPan  = 5355;
 const long kMinTimeCryoChange = 600; //10 minutes
-const long kLogTimeInterval = 5; //in seconds
+const long kLogTimeInterval = 15; //in seconds
 
 // time_t lastCryoChange(0);
 // bool gCryoStatus;
@@ -113,7 +113,7 @@ int talkToSocket(const char* inetAddr, const int port, const string &msj, string
   }
   
   struct timeval timeout;      
-  timeout.tv_sec = 5;
+  timeout.tv_sec = 10;
   timeout.tv_usec = 0;
 
   /* socket timeout */
@@ -170,7 +170,7 @@ float getSensorData(const char* msj, const int sPort){
 void getLogData(){
   
   gSystemStatus.temp  = getSensorData("rtd", portTemp); /* get temperature */
-  gSystemStatus.relay = getSensorData("rly", portTemp); /* get cryocooler relay status */
+  gSystemStatus.relay = (int)getSensorData("rly", portTemp); /* get cryocooler relay status */
   gSystemStatus.htr   = getSensorData("htr", portTemp); /* get cryocooler relay status */
   
   gSystemStatus.pres  = getSensorData("prs", portPres); /* get pressure */
@@ -298,7 +298,7 @@ int listenForCommands(int &listenfd)
   int read_size = recv(client_sock , recvBuff , 1025 , 0);
   
   ticks = time(NULL);
-  snprintf(sendBuff, sizeof(sendBuff), "%.24s\r\n", ctime(&ticks));
+  snprintf(sendBuff, sizeof(sendBuff), "# %.24s\r\n", ctime(&ticks));
   write(client_sock, sendBuff, strlen(sendBuff));
   
   if(strncmp (recvBuff, "stop", 4) == 0){
@@ -623,7 +623,7 @@ int main(void) {
   
   /* Global variables initialization */
   time( &(gSystemStatus.lastCryoChange) );
-  gSystemStatus.relay = getSensorData("rly", portTemp); /* get cryocooler relay status */
+  gSystemStatus.relay = (int)getSensorData("rly", portTemp); /* get cryocooler relay status */
   gSystemStatus.cryoStatus = gSystemStatus.relay;
 
   /* Change the file mode mask */
