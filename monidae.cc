@@ -53,6 +53,9 @@ struct systemStatus_t{
   time_t expoStart;
   time_t expoStop;
   
+  time_t readStart;
+  time_t readStop;
+  
   float temp;
   float tempExpoMax;
   float tempExpoMin;
@@ -75,7 +78,7 @@ struct systemStatus_t{
   systemStatus_t(): logDir(""),
                     readingImage(false),exposingImage(false),
                     cryoStatus(kEmptyCode),lastCryoChange(kEmptyCode),relay(kEmptyCode),
-                    expoStart(kEmptyCode),expoStop(kEmptyCode),
+                    expoStart(kEmptyCode),expoStop(kEmptyCode),readStart(kEmptyCode),readStop(kEmptyCode),
                     temp(kEmptyCode),tempExpoMax(kEmptyCode),tempExpoMin(kEmptyCode),
                     htr(kEmptyCode),htrExpoMax(kEmptyCode),htrExpoMin(kEmptyCode),
                     pres(kEmptyCode),presExpoMax(kEmptyCode),presExpoMin(kEmptyCode),
@@ -347,6 +350,7 @@ int listenForCommands(int &listenfd)
     
     if(gSystemStatus.readingImage == true){
       response="Read ended: will resume pan logging.\n";
+      time( &(gSystemStatus.readStop) );
       gSystemStatus.readingImage = false;
       write(client_sock , response.c_str() , response.size());
     }
@@ -355,12 +359,14 @@ int listenForCommands(int &listenfd)
   
   else if(strncmp (recvBuff, "readStarted", 11) == 0){
     string response="Read started: will suspend pan logging.\n";
+    time( &(gSystemStatus.readStart) );
     gSystemStatus.readingImage = true;
     write(client_sock , response.c_str() , response.size());
   }
   
   else if(strncmp (recvBuff, "readEnded", 9) == 0){
     string response="Read ended: will resume pan logging.\n";
+    time( &(gSystemStatus.readStop) );
     gSystemStatus.readingImage = false;
     write(client_sock , response.c_str() , response.size());
   }
@@ -374,12 +380,31 @@ int listenForCommands(int &listenfd)
       time_t currentTime;
       time( &currentTime);
       double dif = difftime(currentTime,gSystemStatus.expoStart);
-      statOSS << "EXPTIME " <<  dif  << endl << endl;
+      statOSS << "EXPTIME  " <<  dif  << endl;
+      statOSS << "EXPSTART " << gSystemStatus.expoStart << endl << endl;
     }
     else{
       double dif = difftime(gSystemStatus.expoStop,gSystemStatus.expoStart);
-      statOSS << "EXPTIME " << dif << endl;
+      statOSS << "EXPTIME  " << dif << endl;
+      statOSS << "EXPSTART " << gSystemStatus.expoStart << endl;
+      statOSS << "EXPSTOP  " << gSystemStatus.expoStop << endl;
     }
+    
+    if(gSystemStatus.readingImage){
+      statOSS << "CURRENTLY READING \n";
+      time_t currentTime;
+      time( &currentTime);
+      double dif = difftime(currentTime,gSystemStatus.readStart);
+      statOSS << "RDTIME   " <<  dif  << endl;
+      statOSS << "RDSTART  " << gSystemStatus.readStart << endl;
+    }
+    else{
+      double dif = difftime(gSystemStatus.readStop,gSystemStatus.readStart);
+      statOSS << "RDTIME   " << dif << endl;
+      statOSS << "RDSTART  " << gSystemStatus.readStart << endl;
+      statOSS << "RDSTOP   " << gSystemStatus.readStop << endl;
+    }
+    
     
     statOSS << "TEMPMAX " << gSystemStatus.tempExpoMax << endl;
     statOSS << "TEMPMIN " << gSystemStatus.tempExpoMin << endl;
@@ -403,7 +428,7 @@ int listenForCommands(int &listenfd)
     ostringstream statOSS; 
     
     if(gSystemStatus.exposingImage){
-      statOSS << "EXPOSING \n";
+      statOSS << "EXPOSING\n";
       time_t currentTime;
       time( &currentTime);
       double dif = difftime(currentTime,gSystemStatus.expoStart);
@@ -414,6 +439,14 @@ int listenForCommands(int &listenfd)
       time( &currentTime);
       double dif = difftime(currentTime,gSystemStatus.expoStop);
       statOSS << "LAST EXPOSURE ENDED " << dif << " SECONDS AGO\n";
+    }
+    
+    if(gSystemStatus.exposingImage){
+      statOSS << "READING\n";
+      time_t currentTime;
+      time( &currentTime);
+      double dif = difftime(currentTime,gSystemStatus.readStart);
+      statOSS << "RDTIME " <<  dif  << endl << endl;
     }
     
     statOSS << "CRYO " << (gSystemStatus.cryoStatus ? "ON":"OFF") << endl;
@@ -634,7 +667,7 @@ int main(void) {
   logFile << "#Time\tTemp\tPressure\t";
   for(unsigned int p=0;p<gSystemStatus.vTelName.size();++p)
      logFile << gSystemStatus.vTelName[p] << "\t";
-  logFile << "htr\trelay";
+  logFile << "htr\trelay\t";
   logFile << "cryoStatus\treadingImage\texposingImage";
   logFile << endl;
   
