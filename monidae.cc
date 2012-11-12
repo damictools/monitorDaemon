@@ -45,6 +45,7 @@ struct systemStatus_t{
   
   bool readingImage;
   bool exposingImage;
+  int intW;
   
   int cryoStatus;
   time_t lastCryoChange;
@@ -59,7 +60,8 @@ struct systemStatus_t{
   float temp;
   float tempExpoMax;
   float tempExpoMin;
-  
+
+  int   htrMode;  
   float htr;
   float htrExpoMax;
   float htrExpoMin;
@@ -76,11 +78,11 @@ struct systemStatus_t{
   vector<float>  vTelExpoMin;
   
   systemStatus_t(): logDir(""),
-                    readingImage(false),exposingImage(false),
+                    readingImage(false),exposingImage(false),intW(kEmptyCode),
                     cryoStatus(kEmptyCode),lastCryoChange(kEmptyCode),relay(kEmptyCode),
                     expoStart(kEmptyCode),expoStop(kEmptyCode),readStart(kEmptyCode),readStop(kEmptyCode),
                     temp(kEmptyCode),tempExpoMax(kEmptyCode),tempExpoMin(kEmptyCode),
-                    htr(kEmptyCode),htrExpoMax(kEmptyCode),htrExpoMin(kEmptyCode),
+                    htrMode(kEmptyCode),htr(kEmptyCode),htrExpoMax(kEmptyCode),htrExpoMin(kEmptyCode),
                     pres(kEmptyCode),presExpoMax(kEmptyCode),presExpoMin(kEmptyCode),
                     vTel(0),vTelName(0),vTelComm(0),vTelExpoMax(0),vTelExpoMin(0){;};
 };
@@ -172,13 +174,19 @@ float getSensorData(const char* msj, const int sPort){
 
 void getLogData(){
   
-  gSystemStatus.temp  = getSensorData("rtd", portTemp); /* get temperature */
-  gSystemStatus.relay = (int)getSensorData("rly", portTemp); /* get cryocooler relay status */
-  gSystemStatus.htr   = getSensorData("htr", portTemp); /* get cryocooler relay status */
+  gSystemStatus.temp    = getSensorData("rtd", portTemp); /* get temperature */
+  gSystemStatus.relay   = (int)getSensorData("rly", portTemp); /* get cryocooler relay status */
+  gSystemStatus.htrMode = (int)getSensorData("ht?", portTemp); /* get heater mode */
+  gSystemStatus.htr     = getSensorData("htr", portTemp); /* get heater power */
   
   gSystemStatus.pres  = getSensorData("prs", portPres); /* get pressure */
   
   /* get all the pan variables */
+  if( gSystemStatus.readingImage == false ){
+    const string msjPan = "get INTEG_WIDTH";
+    gSystemStatus.intW = getSensorData(msjPan.c_str(), portPan);
+  }
+
   for(unsigned int p=0;p<gSystemStatus.vTelComm.size();++p){
     if( gSystemStatus.readingImage == false ){
       const string msjPan = "get " + gSystemStatus.vTelComm[p];
@@ -230,7 +238,8 @@ void turnHtrOnOff(bool htrON,string &responseHtr){
     responseHtr= htrON ? "Heater ON\n":"Heater OFF\n";
   }
   
-  gSystemStatus.htr   = getSensorData("htr", portTemp); /* get cryocooler relay status */
+  gSystemStatus.htrMode = (int)getSensorData("ht?", portTemp); /* get heater mode status */
+  gSystemStatus.htr     = getSensorData("htr", portTemp); /* get heater power status */
   
 }
 
@@ -405,7 +414,8 @@ int listenForCommands(int &listenfd)
       statOSS << "RDSTOP   " << gSystemStatus.readStop << endl;
     }
     
-    
+    statOSS << "INTW    " << gSystemStatus.intW << endl;
+ 
     statOSS << "TEMPMAX " << gSystemStatus.tempExpoMax << endl;
     statOSS << "TEMPMIN " << gSystemStatus.tempExpoMin << endl;
     
@@ -448,13 +458,21 @@ int listenForCommands(int &listenfd)
       double dif = difftime(currentTime,gSystemStatus.readStart);
       statOSS << "RDTIME " <<  dif  << endl << endl;
     }
+
+    if(gSystemStatus.cryoStatus<0)    
+      statOSS << "CRYO    " << "UNK" << endl;
+    else
+      statOSS << "CRYO    " << (gSystemStatus.cryoStatus ? "ON":"OFF") << endl;
+
+    if(gSystemStatus.relay<0)
+      statOSS << "RLY     " << "UNK" << endl;
+    else
+      statOSS << "RLY     " << (gSystemStatus.relay ? "ON":"OFF") << endl;
     
-    statOSS << "CRYO " << (gSystemStatus.cryoStatus ? "ON":"OFF") << endl;
-    statOSS << "RLY  " << (gSystemStatus.relay ? "ON":"OFF") << endl;
-    
-    statOSS << "TEMP " << gSystemStatus.temp << endl;
-    statOSS << "HTR  " << gSystemStatus.htr << endl;
-    statOSS << "PRES " << gSystemStatus.pres << endl;
+    statOSS << "TEMP    " << gSystemStatus.temp << endl;
+    statOSS << "HTRMODE " << gSystemStatus.htrMode << endl;
+    statOSS << "HTRPOW  " << gSystemStatus.htr << endl;
+    statOSS << "PRES    " << gSystemStatus.pres << endl;
     
     for(unsigned int p=0;p<gSystemStatus.vTelName.size();++p){
       statOSS << gSystemStatus.vTelName[p] << " " << gSystemStatus.vTel[p] << endl;
@@ -667,7 +685,7 @@ int main(void) {
   logFile << "#Time\tTemp\tPressure\t";
   for(unsigned int p=0;p<gSystemStatus.vTelName.size();++p)
      logFile << gSystemStatus.vTelName[p] << "\t";
-  logFile << "htr\trelay\t";
+  logFile << "htrMode\thtrPow\trelay\t";
   logFile << "cryoStatus\treadingImage\texposingImage";
   logFile << endl;
   
@@ -694,6 +712,7 @@ int main(void) {
     logFile << time (NULL) << " " << gSystemStatus.temp << "\t" << gSystemStatus.pres;
     for(unsigned int p=0;p<gSystemStatus.vTelComm.size();++p)
       logFile << "\t" << gSystemStatus.vTel[p];
+    logFile << "\t" << gSystemStatus.htrMode;
     logFile << "\t" << gSystemStatus.htr;
     logFile << "\t" << gSystemStatus.relay;
     logFile << "\t" << gSystemStatus.cryoStatus; 
