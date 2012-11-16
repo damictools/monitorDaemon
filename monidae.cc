@@ -510,7 +510,6 @@ bool readConfFile(const string &confFile){
     return false;
   }
   
-  
   string logDir="";
   
   while(!in.eof()){
@@ -518,7 +517,7 @@ bool readConfFile(const string &confFile){
     in.getline(headerLine,kMaxLine);
     string headerS(headerLine);
     
-    unsigned int found = headerS.find_first_not_of(" \t\v\r\n");
+    size_t found = headerS.find_first_not_of(" \t\v\r\n");
     if(found == string::npos) continue;
     else if( headerLine[found] == '#') continue;
     
@@ -534,24 +533,24 @@ bool readConfFile(const string &confFile){
   
     if(logDir != "") break; 
   }
-  
+
   if(logDir == ""){
     cout << "Error: missing LOGGING_DIR in header.\n\n";
     in.close();
     return false;
   }
-  
+
   gSystemStatus.logDir = logDir;
   
   while(!in.eof()){
     char line[kMaxLine];
     in.getline(line,kMaxLine);
-    
+
     string lineS(line);
-    unsigned int found = lineS.find_first_not_of(" \t\v\r\n");
+    size_t found = lineS.find_first_not_of(" \t\v\r\n");
     if(found == string::npos) continue;
     else if( line[found] == '#') continue;
-    
+
     std::stringstream iss(line);
     string aux;
     int nCols=0;
@@ -629,16 +628,76 @@ int initServer(){
   return listenfd;
 }
 
+void printHelp(){
+  cout << "\nThis program monitors and comunicate with all the DAMIC components.\n";
+  cout << "\n";
+  cout << "Usage:\n";
+  cout << "  monidae.exe -c <configuration file name> \n\n";
+  cout << "For any problems or bugs contact Javier Tiffenberg <javiert@fnal.gov>\n\n";
+}
 
-int main(void) {
+int processCommandLineArgs(const int argc, char *argv[], string &configFile){
   
-  readConfFile("monidae.conf");
+  if(argc == 1){
+    printHelp();
+    return 1;
+  }
   
+  bool configFileFlag = false;
+  int opt=0;
+  while ( (opt = getopt(argc, argv, "c:hH?")) != -1) {
+    switch (opt) {
+    case 'c':
+      if(!configFileFlag){
+        configFile = optarg;
+        configFileFlag = true;
+      }
+      else{
+        cerr << "\nError, can not set more than one stats file!\n\n";
+        return 2;
+      }
+      break;
+    case 'h':
+    case 'H':
+    default: /* '?' */
+      printHelp();
+      return 1;
+    }
+  }
+  
+  if(!configFileFlag){
+    cerr << "\nConfig file name missing.\n\n";
+    return 2;
+  }
+  
+  if((argc-optind) != 0){
+    cerr << "\nError, too many arguments!\n\n";
+    return 2;
+  }
+  
+  return 0;
+}
+
+
+int main(int argc, char *argv[]) {
+  
+  string configFile="";
+  int retCode = processCommandLineArgs(argc, argv, configFile);
+
+  if(retCode!=0){
+    cerr << "\nThe daemon has not been started.\n\n";
+    return retCode;
+  }
+
+  bool allOk = readConfFile(configFile.c_str());
+  if(!allOk){
+    cerr << "\nThe daemon has not been started.\n\n";
+    return 1;
+  }
+
   const string logFileName = gSystemStatus.logDir+"/log.txt";
   const string lockFile    = gSystemStatus.logDir+"/lock";
 
-  cout << lockFile << endl;
-  
   int pid_file = open(lockFile.c_str(), O_CREAT | O_RDWR, 0666);
   int rc = flock(pid_file, LOCK_EX | LOCK_NB);
   if(rc!=0) {
@@ -654,13 +713,14 @@ int main(void) {
     }
     return 1; 
   }
-  
 
   cout << endl << "Logging dir: " << gSystemStatus.logDir << endl << endl; 
   for(unsigned int i=0;i<gSystemStatus.vTelName.size();++i){
     cout << gSystemStatus.vTelName[i] << "\t" << gSystemStatus.vTelComm[i] << endl;
   }
   cout << "\n";
+  
+  cout << "Launching the daemon.\n\n";
   
   /* init daemon */
   bool initOK = initDaemon();
@@ -725,7 +785,7 @@ int main(void) {
     i++;
     time( &lastLogTime ); 
   }
-  cout << "after\n";
+  //cout << "after\n";
   logFile.close();
   exit(EXIT_SUCCESS);
 }
