@@ -11,6 +11,7 @@
 #include<sys/socket.h>  //socket
 #include<arpa/inet.h>   //inet_addr
 
+#include <iomanip>
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -35,6 +36,7 @@ const int portPres = 2050;
 const int portPan  = 5355;
 const long kMinTimeCryoChange = 600; //10 minutes
 const long kLogTimeInterval = 15; //in seconds
+const long kNewLogFileInterval = 3600; //in seconds
 
 // time_t lastCryoChange(0);
 // bool gCryoStatus;
@@ -42,6 +44,7 @@ const long kLogTimeInterval = 15; //in seconds
 struct systemStatus_t{
   
   string logDir;
+  int logFileNumber;
   
   bool readingImage;
   bool exposingImage;
@@ -77,7 +80,7 @@ struct systemStatus_t{
   vector<float>  vTelExpoMax;
   vector<float>  vTelExpoMin;
   
-  systemStatus_t(): logDir(""),
+  systemStatus_t(): logDir(""),logFileNumber(1),
                     readingImage(false),exposingImage(false),intW(kEmptyCode),
                     cryoStatus(kEmptyCode),lastCryoChange(kEmptyCode),relay(kEmptyCode),
                     expoStart(kEmptyCode),expoStop(kEmptyCode),readStart(kEmptyCode),readStop(kEmptyCode),
@@ -678,6 +681,33 @@ int processCommandLineArgs(const int argc, char *argv[], string &configFile){
   return 0;
 }
 
+void initNewLogFile(ofstream &logFile){
+  
+  if(logFile.is_open()){
+    logFile.close();
+  }
+  
+  time_t logFileIniTime;
+  time( &logFileIniTime);
+  struct tm *ptm = gmtime ( &logFileIniTime );
+  
+  ostringstream logFileNameOSS;
+
+  logFileNameOSS << gSystemStatus.logDir << "/log_" << setfill ('0')  << setw (4) << gSystemStatus.logFileNumber << "_" 
+                 << ptm->tm_year+1900 << setfill ('0')  << setw (2) << ptm->tm_mon << setfill ('0')  << setw (2) << ptm->tm_mday 
+                 << ".txt";
+  
+  logFile.open(logFileNameOSS.str().c_str());
+  
+  logFile << "#Time\tTemp\tPressure\t";
+  for(unsigned int p=0;p<gSystemStatus.vTelName.size();++p)
+     logFile << gSystemStatus.vTelName[p] << "\t";
+  logFile << "htrMode\thtrPow\trelay\t";
+  logFile << "cryoStatus\treadingImage\texposingImage";
+  logFile << endl;
+
+}
+
 
 int main(int argc, char *argv[]) {
   
@@ -694,8 +724,7 @@ int main(int argc, char *argv[]) {
     cerr << "\nThe daemon has not been started.\n\n";
     return 1;
   }
-
-  const string logFileName = gSystemStatus.logDir+"/log.txt";
+  
   const string lockFile    = gSystemStatus.logDir+"/lock";
 
   int pid_file = open(lockFile.c_str(), O_CREAT | O_RDWR, 0666);
@@ -729,9 +758,6 @@ int main(int argc, char *argv[]) {
   /* Socket server initialization */
   int listenfd = initServer();
   
-  
-  
-  
   /* Global variables initialization */
   time( &(gSystemStatus.lastCryoChange) );
   gSystemStatus.relay = (int)getSensorData("rly", portTemp); /* get cryocooler relay status */
@@ -741,13 +767,10 @@ int main(int argc, char *argv[]) {
   umask(0);
           
   /* Open any logs here */
-  ofstream logFile(logFileName.c_str());
-  logFile << "#Time\tTemp\tPressure\t";
-  for(unsigned int p=0;p<gSystemStatus.vTelName.size();++p)
-     logFile << gSystemStatus.vTelName[p] << "\t";
-  logFile << "htrMode\thtrPow\trelay\t";
-  logFile << "cryoStatus\treadingImage\texposingImage";
-  logFile << endl;
+  ofstream logFile;
+  time_t lastLogFileIniTime;
+  time( &lastLogFileIniTime);
+  initNewLogFile(logFile);
   
   /* The Big Loop */
   int i=0;
@@ -763,6 +786,16 @@ int main(int argc, char *argv[]) {
 
     time_t currentTime;
     time( &currentTime);
+    
+    /* create a new log file if enough time has elapsed*/
+    double logTimeDif = difftime(currentTime,lastLogFileIniTime);
+    if(logTimeDif > kNewLogFileInterval){
+      time( &lastLogFileIniTime);
+      ++(gSystemStatus.logFileNumber);
+      initNewLogFile(logFile);
+    }
+    
+    
     double dif = difftime(currentTime,lastLogTime);
     if(dif < kLogTimeInterval) continue;
 
