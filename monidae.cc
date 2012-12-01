@@ -36,7 +36,7 @@ const int portPres = 2050;
 const int portPan  = 5355;
 const long kMinTimeCryoChange = 600; //10 minutes
 const long kLogTimeInterval = 15; //in seconds
-const long kNewLogFileInterval = 3600; //in seconds
+const long kNewLogFileInterval = 600; //in seconds
 
 // time_t lastCryoChange(0);
 // bool gCryoStatus;
@@ -60,6 +60,7 @@ struct systemStatus_t{
   time_t readStart;
   time_t readStop;
   
+  float setTemp;
   float temp;
   float tempExpoMax;
   float tempExpoMin;
@@ -84,7 +85,7 @@ struct systemStatus_t{
                     readingImage(false),exposingImage(false),intW(kEmptyCode),
                     cryoStatus(kEmptyCode),lastCryoChange(kEmptyCode),relay(kEmptyCode),
                     expoStart(kEmptyCode),expoStop(kEmptyCode),readStart(kEmptyCode),readStop(kEmptyCode),
-                    temp(kEmptyCode),tempExpoMax(kEmptyCode),tempExpoMin(kEmptyCode),
+                    setTemp(kEmptyCode),temp(kEmptyCode),tempExpoMax(kEmptyCode),tempExpoMin(kEmptyCode),
                     htrMode(kEmptyCode),htr(kEmptyCode),htrExpoMax(kEmptyCode),htrExpoMin(kEmptyCode),
                     pres(kEmptyCode),presExpoMax(kEmptyCode),presExpoMin(kEmptyCode),
                     vTel(0),vTelName(0),vTelComm(0),vTelExpoMax(0),vTelExpoMin(0){;};
@@ -176,7 +177,8 @@ float getSensorData(const char* msj, const int sPort){
 
 
 void getLogData(){
-  
+ 
+  gSystemStatus.setTemp = getSensorData("stp", portTemp); /* get set temperature */ 
   gSystemStatus.temp    = getSensorData("rtd", portTemp); /* get temperature */
   gSystemStatus.relay   = (int)getSensorData("rly", portTemp); /* get cryocooler relay status */
   gSystemStatus.htrMode = (int)getSensorData("ht?", portTemp); /* get heater mode */
@@ -472,6 +474,7 @@ int listenForCommands(int &listenfd)
     else
       statOSS << "RLY     " << (gSystemStatus.relay ? "ON":"OFF") << endl;
     
+    statOSS << "SETTEMP " << gSystemStatus.setTemp << endl;
     statOSS << "TEMP    " << gSystemStatus.temp << endl;
     statOSS << "HTRMODE " << gSystemStatus.htrMode << endl;
     statOSS << "HTRPOW  " << gSystemStatus.htr << endl;
