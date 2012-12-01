@@ -49,6 +49,7 @@ struct systemStatus_t{
   bool readingImage;
   bool exposingImage;
   int intW;
+  string panStatus;
   
   int cryoStatus;
   time_t lastCryoChange;
@@ -82,7 +83,7 @@ struct systemStatus_t{
   vector<float>  vTelExpoMin;
   
   systemStatus_t(): logDir(""),logFileNumber(1),
-                    readingImage(false),exposingImage(false),intW(kEmptyCode),
+                    readingImage(false),exposingImage(false),intW(kEmptyCode),panStatus("UNKNOWN"),
                     cryoStatus(kEmptyCode),lastCryoChange(kEmptyCode),relay(kEmptyCode),
                     expoStart(kEmptyCode),expoStop(kEmptyCode),readStart(kEmptyCode),readStop(kEmptyCode),
                     setTemp(kEmptyCode),temp(kEmptyCode),tempExpoMax(kEmptyCode),tempExpoMin(kEmptyCode),
@@ -188,8 +189,15 @@ void getLogData(){
   
   /* get all the pan variables */
   if( gSystemStatus.readingImage == false ){
-    const string msjPan = "get INTEG_WIDTH";
-    gSystemStatus.intW = getSensorData(msjPan.c_str(), portPan);
+    {
+      const string msjPan = "get INTEG_WIDTH";
+      gSystemStatus.intW = getSensorData(msjPan.c_str(), portPan);
+    }
+
+    {
+      const string msjPan = "get status";
+      gSystemStatus.panStatus = getSensorData(msjPan.c_str(), portPan);
+    }
   }
 
   for(unsigned int p=0;p<gSystemStatus.vTelComm.size();++p){
@@ -479,7 +487,8 @@ int listenForCommands(int &listenfd)
     statOSS << "HTRMODE " << gSystemStatus.htrMode << endl;
     statOSS << "HTRPOW  " << gSystemStatus.htr << endl;
     statOSS << "PRES    " << gSystemStatus.pres << endl;
-    
+   
+    statOSS << "PANSTAT " << gSystemStatus.panStatus << endl;
     for(unsigned int p=0;p<gSystemStatus.vTelName.size();++p){
       statOSS << gSystemStatus.vTelName[p] << " " << gSystemStatus.vTel[p] << endl;
     }
