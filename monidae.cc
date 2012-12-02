@@ -36,7 +36,7 @@ const int portPres = 2050;
 const int portPan  = 5355;
 const long kMinTimeCryoChange = 600; //10 minutes
 const long kLogTimeInterval = 15; //in seconds
-const long kNewLogFileInterval = 600; //in seconds
+const long kNewLogFileInterval = 1800; //in seconds
 
 // time_t lastCryoChange(0);
 // bool gCryoStatus;
@@ -158,8 +158,8 @@ int talkToSocket(const char* inetAddr, const int port, const string &msj, string
 }
 
 
-float getSensorData(const char* msj, const int sPort){
-  
+string getStringData(const char* msj, const int sPort){
+
   string responseString("");
   int comCode = talkToSocket(inetAddr, sPort, msj, responseString);
   if ( comCode < 0){
@@ -167,6 +167,13 @@ float getSensorData(const char* msj, const int sPort){
     oss << comCode*kCommErrorMask;
     responseString = oss.str();
   }
+  return responseString;
+}
+
+
+float getSensorData(const char* msj, const int sPort){
+  
+  string responseString = getStringData(msj, sPort);
   istringstream responseISS(responseString);
   
   float responseVal = kEmptyCode;
@@ -196,7 +203,7 @@ void getLogData(){
 
     {
       const string msjPan = "get status";
-      gSystemStatus.panStatus = getSensorData(msjPan.c_str(), portPan);
+      gSystemStatus.panStatus = getStringData(msjPan.c_str(), portPan);
     }
   }
 
@@ -706,7 +713,8 @@ void initNewLogFile(ofstream &logFile){
   ostringstream logFileNameOSS;
 
   logFileNameOSS << gSystemStatus.logDir << "/log_" << setfill ('0')  << setw (4) << gSystemStatus.logFileNumber << "_" 
-                 << ptm->tm_year+1900 << setfill ('0')  << setw (2) << ptm->tm_mon << setfill ('0')  << setw (2) << ptm->tm_mday 
+                 << ptm->tm_year+1900 << setfill ('0')  << setw (2) << ptm->tm_mon << setfill ('0')  << setw (2) << ptm->tm_mday
+                 << setfill ('0') << setw (2) << ptm->tm_hour << setfill ('0')  << setw (2) << ptm->tm_min 
                  << ".txt";
   
   logFile.open(logFileNameOSS.str().c_str());
