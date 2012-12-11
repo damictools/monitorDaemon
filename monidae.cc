@@ -48,6 +48,8 @@ struct systemStatus_t{
   
   string logDir;
   
+  bool inEmergencyState;
+  
   bool readingImage;
   bool exposingImage;
   int intW;
@@ -86,6 +88,7 @@ struct systemStatus_t{
   vector<float>  vTelExpoMin;
   
   systemStatus_t(): logDir(""),
+                    inEmergencyState(false),
                     readingImage(false),exposingImage(false),intW(kEmptyCode),panStatus("UNKNOWN"),
                     cryoStatus(kEmptyCode),lastCryoChange(kEmptyCode),relay(kEmptyCode),
                     expoStart(kEmptyCode),expoStop(kEmptyCode),readStart(kEmptyCode),readStop(kEmptyCode),
@@ -219,6 +222,34 @@ void getLogData(){
      gSystemStatus.vTel[p] = kNotReadingCode; 
   }
   
+}
+
+/* Overrides time check turns the cryo off,*/
+/* the CCDs bias voltages and shuts down panview */
+void emergencyOff(){
+
+  gSystemStatus.inEmergencyState = true;
+  
+  /* turn the cryo off */
+  string responseCryo="";
+  const string msjCryo = "off";
+  talkToSocket(inetAddr, portTemp, msjCryo, responseCryo);
+
+  
+  string responsePan="";
+  {/* turn off the CCDs bias voltages */
+    const string msjPan = "att set SL5_CCD12_VSUB_LIMIT 0";
+    talkToSocket(inetAddr, portPan, msjPan, responsePan);
+  }
+  {
+    const string msjPan = "att set SL6_CCD12_VSUB_LIMIT 0";
+    talkToSocket(inetAddr, portPan, msjPan, responsePan);
+  }
+  
+  {/* shut down panview */
+    const string msjPan = "shutdown";
+    talkToSocket(inetAddr, portPan, msjPan, responsePan);
+  }
 }
 
 void turnCryoOnOff(bool cryoON,string &responseCryo){
@@ -387,7 +418,12 @@ int listenForCommands(int &listenfd)
   }
   else if(strncmp (recvBuff, "cryoON", 6) == 0){
     string response;
-    turnCryoOnOff(true,response);
+    if(gSystemStatus.inEmergencyState){
+      response = "In emergency state. Will not turn the cryo on\n";
+    }
+    else{
+      turnCryoOnOff(true,response);
+    }
     write(client_sock , response.c_str() , response.size());
   }
   else if(strncmp (recvBuff, "cryoOFF", 7) == 0){
@@ -504,6 +540,10 @@ int listenForCommands(int &listenfd)
   else if(strncmp (recvBuff, "printCurrentStatus", 18) == 0){
     
     ostringstream statOSS; 
+    
+    if(gSystemStatus.inEmergencyState){
+      statOSS << "\nEMERGENCY STATE\n\n";
+    }
     
     if(gSystemStatus.exposingImage){
       statOSS << "EXPOSING\n";
@@ -795,8 +835,9 @@ void runSafetyChecks(){
   }
   
   /* vacuum check */
-  if(gSystemStatus.pres > kMinSafePres){
-    sendEmail("[DAMIC_DAEMON] VACUUM WARNING", "The pressure is to high!.");
+  if(gSystemStatus.cryoStatus && gSystemStatus.pres > kMinSafePres){
+    sendEmail("[DAMIC_DAEMON] VACUUM WARNING", "The pressure is to high. Will turn off the cryocooler, the CCDs bias and shut down pnaview.");
+    emergencyOff();
   }
   
 }
