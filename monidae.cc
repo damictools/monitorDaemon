@@ -342,7 +342,7 @@ void changeSetTemp(float newSetTemp, string &responseSetTemp){
     string strOldSetT;
     string strNewSetT;
     respISS >> strOldSetT >> strNewSetT;
-    responseSetTemp = "Set Temp change: " + strOldSetT + " -> " + strNewSetT;
+    responseSetTemp = "Set Temp change: " + strOldSetT + " -> " + strNewSetT + "\n";
   }
 }
 
