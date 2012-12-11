@@ -28,10 +28,12 @@ const int kEmptyCode =-1002;
 const int kNotReadingCode =-2001;
 const int kCommErrorMask  = 10000;
 
+const char kEmailAddress[] = "javiert@fnal.gov";
 const char inetAddr[] = "127.0.0.1";
 //const char inetAddr[] = "131.225.90.254"; //whirl
 //const char inetAddr[] = "131.225.90.5"; //cyclone
 const int portTemp = 2055;
+const int portSetT = 2060;
 const int portPres = 2050;
 const int portPan  = 5355;
 const long kMinTimeCryoChange = 600; //10 minutes
@@ -44,7 +46,6 @@ const long kNewLogFileInterval = 1800; //in seconds
 struct systemStatus_t{
   
   string logDir;
-  int logFileNumber;
   
   bool readingImage;
   bool exposingImage;
@@ -61,6 +62,7 @@ struct systemStatus_t{
   time_t readStart;
   time_t readStop;
   
+  float usrSetTemp;
   float setTemp;
   float temp;
   float tempExpoMax;
@@ -82,11 +84,11 @@ struct systemStatus_t{
   vector<float>  vTelExpoMax;
   vector<float>  vTelExpoMin;
   
-  systemStatus_t(): logDir(""),logFileNumber(1),
+  systemStatus_t(): logDir(""),
                     readingImage(false),exposingImage(false),intW(kEmptyCode),panStatus("UNKNOWN"),
                     cryoStatus(kEmptyCode),lastCryoChange(kEmptyCode),relay(kEmptyCode),
                     expoStart(kEmptyCode),expoStop(kEmptyCode),readStart(kEmptyCode),readStop(kEmptyCode),
-                    setTemp(kEmptyCode),temp(kEmptyCode),tempExpoMax(kEmptyCode),tempExpoMin(kEmptyCode),
+                    usrSetTemp(kEmptyCode),setTemp(kEmptyCode),temp(kEmptyCode),tempExpoMax(kEmptyCode),tempExpoMin(kEmptyCode),
                     htrMode(kEmptyCode),htr(kEmptyCode),htrExpoMax(kEmptyCode),htrExpoMin(kEmptyCode),
                     pres(kEmptyCode),presExpoMax(kEmptyCode),presExpoMin(kEmptyCode),
                     vTel(0),vTelName(0),vTelComm(0),vTelExpoMax(0),vTelExpoMin(0){;};
@@ -319,6 +321,46 @@ void updateExpoStats(){
   }
 }
 
+void changeSetTemp(float newSetTemp, string &responseSetTemp){
+  responseSetTemp="";
+  gSystemStatus.usrSetTemp = newSetTemp;  
+  
+  ostringstream msjSetTep;
+  
+  msjSetTep << "setpt " << gSystemStatus.usrSetTemp;
+  
+  int comCode = talkToSocket(inetAddr, portSetT, msjSetTep.str(), responseSetTemp);
+  
+  if ( comCode < 0){
+    ostringstream oss;
+    oss << comCode << endl;
+    responseSetTemp = oss.str();
+  }
+  else{
+    istringstream respISS(responseSetTemp);
+    string strOldSetT;
+    string strNewSetT;
+    respISS >> strOldSetT >> strNewSetT;
+    responseSetTemp = "Set Temp change: " + strOldSetT + " -> " + strNewSetT;
+  }
+}
+
+void changeSetTempCmd(const char* recvBuff, string &responseSetTemp){
+  responseSetTemp="";
+
+  istringstream buffISS(&(recvBuff[7]));
+  float newSetTemp = kEmptyCode;
+  buffISS >> newSetTemp;
+  if (buffISS.fail()){// not a number
+    responseSetTemp="Error: new set temperature is not a number.\n Will not change the set.\n";
+    return;
+  }
+  else{
+    changeSetTemp(newSetTemp,responseSetTemp);
+    return;
+  }
+}
+
 
 int listenForCommands(int &listenfd)
 {
@@ -360,6 +402,11 @@ int listenForCommands(int &listenfd)
   else if(strncmp (recvBuff, "htrOFF", 6) == 0){
     string response;
     turnHtrOnOff(false,response);
+    write(client_sock , response.c_str() , response.size());
+  }
+  else if(strncmp (recvBuff, "setTEMP", 7) == 0){
+    string response;
+    changeSetTempCmd(recvBuff,response);
     write(client_sock , response.c_str() , response.size());
   }
   
@@ -471,7 +518,7 @@ int listenForCommands(int &listenfd)
       statOSS << "LAST EXPOSURE ENDED " << dif << " SECONDS AGO\n";
     }
     
-    if(gSystemStatus.exposingImage){
+    if(gSystemStatus.readingImage){
       statOSS << "READING\n";
       time_t currentTime;
       time( &currentTime);
@@ -489,6 +536,7 @@ int listenForCommands(int &listenfd)
     else
       statOSS << "RLY     " << (gSystemStatus.relay ? "ON":"OFF") << endl;
     
+    statOSS << "USRSETT " << gSystemStatus.usrSetTemp << endl;
     statOSS << "SETTEMP " << gSystemStatus.setTemp << endl;
     statOSS << "TEMP    " << gSystemStatus.temp << endl;
     statOSS << "HTRMODE " << gSystemStatus.htrMode << endl;
@@ -509,7 +557,7 @@ int listenForCommands(int &listenfd)
     
     ostringstream statOSS; 
     statOSS << "Available commands:\n";
-    statOSS << "stop, stat, cryoON, cryoOFF, htrON, htrOFF, printLastExpoStats, printCurrentStatus, expoStarted, expoEnded, readStarted, readEnded\n";
+    statOSS << "stop, stat, cryoON, cryoOFF, htrON, htrOFF, setTEMP<temp>, printLastExpoStats, printCurrentStatus, expoStarted, expoEnded, readStarted, readEnded\n";
     
     write(client_sock , statOSS.str().c_str() , statOSS.str().size());
   }
@@ -712,7 +760,7 @@ void initNewLogFile(ofstream &logFile){
   
   ostringstream logFileNameOSS;
 
-  logFileNameOSS << gSystemStatus.logDir << "/log_" << setfill ('0')  << setw (4) << gSystemStatus.logFileNumber << "_" 
+  logFileNameOSS << gSystemStatus.logDir << "/log_" 
                  << ptm->tm_year+1900 << setfill ('0')  << setw (2) << ptm->tm_mon << setfill ('0')  << setw (2) << ptm->tm_mday
                  << setfill ('0') << setw (2) << ptm->tm_hour << setfill ('0')  << setw (2) << ptm->tm_min 
                  << ".txt";
@@ -726,6 +774,14 @@ void initNewLogFile(ofstream &logFile){
   logFile << "cryoStatus\treadingImage\texposingImage";
   logFile << endl;
 
+}
+
+void sendEmail(const string &subject, const string &body){
+  
+  ostringstream mailCmdOSS;
+  mailCmdOSS << "echo \"" << body << "\" | mail -s \"" << subject << "\" " << kEmailAddress;
+  FILE* file = popen(mailCmdOSS.str().c_str(), "r");
+  pclose(file);
 }
 
 
@@ -796,7 +852,7 @@ int main(int argc, char *argv[]) {
   int i=0;
  
   time_t lastLogTime = 0;
- 
+  
   while (true) {
 
     if(listenForCommands(listenfd) == -1){
@@ -811,17 +867,24 @@ int main(int argc, char *argv[]) {
     double logTimeDif = difftime(currentTime,lastLogFileIniTime);
     if(logTimeDif > kNewLogFileInterval){
       time( &lastLogFileIniTime);
-      ++(gSystemStatus.logFileNumber);
       initNewLogFile(logFile);
     }
     
-    
+    /* Logging time */
     double dif = difftime(currentTime,lastLogTime);
     if(dif < kLogTimeInterval) continue;
-
-    /* Get data from all the sources and write the log */
+    
+    /* Get data from all the sources */
     getLogData();
     
+    /* Safety checks */
+    if(gSystemStatus.usrSetTemp > 0 && (gSystemStatus.usrSetTemp != gSystemStatus.setTemp) ){
+      string responseSetTemp;
+      changeSetTemp(gSystemStatus.usrSetTemp,responseSetTemp);
+      sendEmail("[DAMIC_DAEMON] SET TEMP WARNING", "Temp set had to be corrected by the daemon.");
+    }
+    
+    /* Write the log */
     logFile << time (NULL) << " " << gSystemStatus.temp << "\t" << gSystemStatus.pres;
     for(unsigned int p=0;p<gSystemStatus.vTelComm.size();++p)
       logFile << "\t" << gSystemStatus.vTel[p];
