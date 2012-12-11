@@ -39,6 +39,7 @@ const int portPan  = 5355;
 const long kMinTimeCryoChange = 600; //10 minutes
 const long kLogTimeInterval = 15; //in seconds
 const long kNewLogFileInterval = 1800; //in seconds
+const float kMinSafePres = 2e-4;
 
 // time_t lastCryoChange(0);
 // bool gCryoStatus;
@@ -785,6 +786,22 @@ void sendEmail(const string &subject, const string &body){
 }
 
 
+void runSafetyChecks(){
+  /* set temp check */
+  if(gSystemStatus.usrSetTemp > 0 && (gSystemStatus.usrSetTemp != gSystemStatus.setTemp) ){
+    string responseSetTemp;
+    changeSetTemp(gSystemStatus.usrSetTemp,responseSetTemp);
+    sendEmail("[DAMIC_DAEMON] SET TEMP WARNING", "Temp set had to be corrected by the daemon.");
+  }
+  
+  /* vacuum check */
+  if(gSystemStatus.pres > kMinSafePres){
+    sendEmail("[DAMIC_DAEMON] VACUUM WARNING", "The pressure is to high!.");
+  }
+  
+}
+
+
 int main(int argc, char *argv[]) {
   
   string configFile="";
@@ -878,11 +895,7 @@ int main(int argc, char *argv[]) {
     getLogData();
     
     /* Safety checks */
-    if(gSystemStatus.usrSetTemp > 0 && (gSystemStatus.usrSetTemp != gSystemStatus.setTemp) ){
-      string responseSetTemp;
-      changeSetTemp(gSystemStatus.usrSetTemp,responseSetTemp);
-      sendEmail("[DAMIC_DAEMON] SET TEMP WARNING", "Temp set had to be corrected by the daemon.");
-    }
+    runSafetyChecks();
     
     /* Write the log */
     logFile << time (NULL) << " " << gSystemStatus.temp << "\t" << gSystemStatus.pres;
