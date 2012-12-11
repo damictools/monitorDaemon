@@ -8,7 +8,7 @@ OBJECTS = monidae.o
 HEADERS = 
 
 ALL : monidae.exe
-	echo "Listo!"
+	@echo "Listo!"
 
 monidae.exe : $(OBJECTS)
 	$(CPP) $(OBJECTS) -o monidae.exe $(LIBS) $(GLIBS) $(CFLAGS)
