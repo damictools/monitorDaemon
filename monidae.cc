@@ -54,6 +54,7 @@ struct systemStatus_t{
   bool exposingImage;
   int intW;
   string panStatus;
+  int imNum;
   
   int cryoStatus;
   time_t lastCryoChange;
@@ -89,7 +90,7 @@ struct systemStatus_t{
   
   systemStatus_t(): logDir(""),
                     inEmergencyState(false),
-                    readingImage(false),exposingImage(false),intW(kEmptyCode),panStatus("UNKNOWN"),
+                    readingImage(false),exposingImage(false),intW(kEmptyCode),panStatus("UNKNOWN"),imNum(kEmptyCode),
                     cryoStatus(kEmptyCode),lastCryoChange(kEmptyCode),relay(kEmptyCode),
                     expoStart(kEmptyCode),expoStop(kEmptyCode),readStart(kEmptyCode),readStop(kEmptyCode),
                     usrSetTemp(kEmptyCode),setTemp(kEmptyCode),temp(kEmptyCode),tempExpoMax(kEmptyCode),tempExpoMin(kEmptyCode),
@@ -211,6 +212,12 @@ void getLogData(){
       const string msjPan = "get status";
       gSystemStatus.panStatus = getStringData(msjPan.c_str(), portPan);
     }
+    
+    {
+      const string msjPan = "get imnumber";
+      gSystemStatus.imNum = getSensorData(msjPan.c_str(), portPan);
+    }
+    
   }
 
   for(unsigned int p=0;p<gSystemStatus.vTelComm.size();++p){
@@ -517,6 +524,8 @@ int listenForCommands(int &listenfd)
       statOSS << "RDSTART  " << gSystemStatus.readStart << endl;
       statOSS << "RDSTOP   " << gSystemStatus.readStop << endl;
     }
+    
+    statOSS << "RUNID   " << gSystemStatus.imNum << endl;
     
     statOSS << "INTW    " << gSystemStatus.intW << endl;
  
