@@ -55,6 +55,7 @@ struct systemStatus_t{
   int intW;
   string panStatus;
   int imNum;
+  int cryoStatRd;
   
   int cryoStatus;
   time_t lastCryoChange;
@@ -90,7 +91,7 @@ struct systemStatus_t{
   
   systemStatus_t(): logDir(""),
                     inEmergencyState(false),
-                    readingImage(false),exposingImage(false),intW(kEmptyCode),panStatus("UNKNOWN"),imNum(kEmptyCode),
+                    readingImage(false),exposingImage(false),intW(kEmptyCode),panStatus("UNKNOWN"),imNum(kEmptyCode),cryoStatRd(kEmptyCode),
                     cryoStatus(kEmptyCode),lastCryoChange(kEmptyCode),relay(kEmptyCode),
                     expoStart(kEmptyCode),expoStop(kEmptyCode),readStart(kEmptyCode),readStop(kEmptyCode),
                     usrSetTemp(kEmptyCode),setTemp(kEmptyCode),temp(kEmptyCode),tempExpoMax(kEmptyCode),tempExpoMin(kEmptyCode),
@@ -200,7 +201,15 @@ void getLogData(){
   gSystemStatus.htr     = getSensorData("htr", portTemp); /* get heater power */
   
   gSystemStatus.pres  = getSensorData("prs", portPres); /* get pressure */
-  
+ 
+
+  /* get cryocooler status during reading */
+  if( gSystemStatus.readingImage == true ){
+    if(gSystemStatus.relay>0) gSystemStatus.cryoStatRd = 1;
+    else if(gSystemStatus.relay<0) gSystemStatus.cryoStatRd = gSystemStatus.relay;
+  }
+
+ 
   /* get all the pan variables */
   if( gSystemStatus.readingImage == false ){
     {
@@ -213,7 +222,7 @@ void getLogData(){
       gSystemStatus.panStatus = getStringData(msjPan.c_str(), portPan);
     }
     
-    {
+    if(gSystemStatus.exposingImage){
       const string msjPan = "get imnumber";
       gSystemStatus.imNum = getSensorData(msjPan.c_str(), portPan);
     }
@@ -481,6 +490,8 @@ int listenForCommands(int &listenfd)
     string response="Read started: will suspend pan logging.\n";
     time( &(gSystemStatus.readStart) );
     gSystemStatus.readingImage = true;
+    gSystemStatus.relay   = (int)getSensorData("rly", portTemp); /* get cryocooler relay status */
+    gSystemStatus.cryoStatRd = gSystemStatus.relay;
     write(client_sock , response.c_str() , response.size());
   }
   
@@ -524,7 +535,9 @@ int listenForCommands(int &listenfd)
       statOSS << "RDSTART  " << gSystemStatus.readStart << endl;
       statOSS << "RDSTOP   " << gSystemStatus.readStop << endl;
     }
-    
+
+    statOSS << "CRYOSTRD " << gSystemStatus.cryoStatRd << endl;
+ 
     statOSS << "RUNID   " << gSystemStatus.imNum << endl;
     
     statOSS << "INTW    " << gSystemStatus.intW << endl;
