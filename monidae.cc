@@ -36,10 +36,10 @@ const int portTemp = 2055;
 const int portSetT = 2060;
 const int portPres = 2050;
 const int portPan  = 5355;
-const long kMinTimeCryoChange = 600; //10 minutes
+const long kMinTimeCryoChange = 240; //now 4 minutes, was 10 minutes
 const long kLogTimeInterval = 15; //in seconds
-const long kNewLogFileInterval = 1800; //in seconds
-const float kMinSafePres = 2e-4;
+const long kNewLogFileInterval = 20000; //in seconds
+const float kMinSafePres = 4e-4;
 
 // time_t lastCryoChange(0);
 // bool gCryoStatus;
@@ -824,7 +824,7 @@ void initNewLogFile(ofstream &logFile){
   ostringstream logFileNameOSS;
 
   logFileNameOSS << gSystemStatus.logDir << "/log_" 
-                 << ptm->tm_year+1900 << setfill ('0')  << setw (2) << ptm->tm_mon << setfill ('0')  << setw (2) << ptm->tm_mday
+                 << ptm->tm_year+1900 << setfill ('0')  << setw (2) << ptm->tm_mon +1 << setfill ('0')  << setw (2) << ptm->tm_mday
                  << setfill ('0') << setw (2) << ptm->tm_hour << setfill ('0')  << setw (2) << ptm->tm_min 
                  << ".txt";
   
