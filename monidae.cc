@@ -613,14 +613,23 @@ int listenForCommands(int &listenfd)
     
     write(client_sock , statOSS.str().c_str() , statOSS.str().size());
   }
-  
-  
+ 
+  else if(strncmp (recvBuff, "refresh", 7) == 0){
+
+    ostringstream statOSS;
+    statOSS << "Getting readings..\n";
+    /* Get data from all the sources */
+    getLogData();
+    statOSS << "done\n";
+
+    write(client_sock , statOSS.str().c_str() , statOSS.str().size());
+  }  
     
   else if(strncmp (recvBuff, "help", 4) == 0){
     
     ostringstream statOSS; 
     statOSS << "Available commands:\n";
-    statOSS << "stop, stat, cryoON, cryoOFF, htrON, htrOFF, setTEMP<temp>, printLastExpoStats, printCurrentStatus, expoStarted, expoEnded, readStarted, readEnded\n";
+    statOSS << "stop, stat, cryoON, cryoOFF, htrON, htrOFF, setTEMP<temp>, printLastExpoStats, printCurrentStatus, expoStarted, expoEnded, readStarted, readEnded, refresh\n";
     
     write(client_sock , statOSS.str().c_str() , statOSS.str().size());
   }
